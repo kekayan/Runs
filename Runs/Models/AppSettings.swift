@@ -4,7 +4,7 @@ struct AppSettings: Codable {
     var selectedRepositoryIDs: Set<Int>
 
     // UserDefaults key
-    private static let userDefaultsKey = "com.yourcompany.runs.settings"
+    private static let userDefaultsKey = "dev.kekayan.runs.settings"
 
     init(selectedRepositoryIDs: Set<Int> = []) {
         self.selectedRepositoryIDs = selectedRepositoryIDs

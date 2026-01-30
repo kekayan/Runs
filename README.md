@@ -10,6 +10,7 @@ A native macOS menu bar application that monitors GitHub Actions workflow runs i
 
 - **Menu Bar Integration** - Lives in your macOS menu bar for quick access
 - **GitHub OAuth** - Secure authentication with your GitHub account
+- **Biometric Protection** - Optional Touch ID / Face ID for token access
 - **Repository Selection** - Choose which repositories to monitor
 - **Real-time Updates** - Auto-refresh every 5 minutes + manual refresh
 - **Workflow Status** - See latest runs with status (success/failure/in-progress)
@@ -98,6 +99,28 @@ Runs/
 ├── RunsApp.swift        # Main entry
 └── Info.plist          # App configuration
 ```
+
+## Security
+
+### Biometric Authentication
+
+The app supports optional biometric authentication (Touch ID / Face ID) to protect your GitHub token:
+
+1. Open Settings (gear icon)
+2. Toggle "Use Touch ID" (or Face ID)
+3. Your token will be protected by biometric authentication
+
+When enabled:
+- Token is stored with biometric access control in Keychain
+- You'll be prompted for biometric auth when accessing the token
+- Background auto-refresh continues to work after initial authentication
+
+### Token Storage
+
+- OAuth tokens are stored in macOS Keychain
+- Encrypted and only accessible when device is unlocked
+- Optional biometric protection layer
+- Tokens persist across app updates
 
 ## Development
 

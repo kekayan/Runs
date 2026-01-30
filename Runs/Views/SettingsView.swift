@@ -33,6 +33,38 @@ struct SettingsView: View {
 
                     if appState.isAuthenticated {
                         Divider()
+                        
+                        // Security Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Label("Security", systemImage: "lock.shield")
+                                .font(.headline)
+                            
+                            if KeychainManager.shared.canUseBiometricAuthentication() {
+                                Toggle("Use \(KeychainManager.shared.getBiometricType())", isOn: Binding(
+                                    get: { appState.useBiometricAuthentication },
+                                    set: { newValue in
+                                        appState.useBiometricAuthentication = newValue
+                                        // Re-save token with new setting
+                                        if let token = appState.authToken {
+                                            Task {
+                                                try? KeychainManager.shared.saveToken(token, useBiometric: newValue)
+                                            }
+                                        }
+                                    }
+                                ))
+                                .toggleStyle(.switch)
+                                
+                                Text("Require biometric authentication to access your GitHub token")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Biometric authentication not available on this device")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Divider()
 
                         // Repository Selection Section
                         VStack(alignment: .leading, spacing: 12) {

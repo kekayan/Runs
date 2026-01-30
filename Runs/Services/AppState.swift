@@ -18,6 +18,14 @@ class AppState {
     private let githubService = GitHubService.shared
     private let keychainManager = KeychainManager.shared
 
+    // MARK: - Biometric Settings
+    var useBiometricAuthentication: Bool {
+        get { KeychainManager.shared.isBiometricEnabled() }
+        set { 
+            // Save preference will be handled when saving token
+        }
+    }
+
     // MARK: - Initialization
     init() {
         loadSavedState()
@@ -54,9 +62,11 @@ class AppState {
             // Exchange code for token
             let token = try await authService.handleCallback(url: url)
 
-            // Save token to Keychain
-            try keychainManager.saveToken(token)
-            authToken = token
+            // Save token to Keychain (with biometric if enabled)
+            try keychainManager.saveToken(token, useBiometric: useBiometricAuthentication)
+            await MainActor.run {
+                self.authToken = token
+            }
 
             // Fetch user info
             currentUser = try await githubService.fetchUser(token: token)
@@ -75,19 +85,54 @@ class AppState {
     // MARK: - Data Loading Methods
 
     func loadSavedState() {
-        // Load token from Keychain
-        if let token = try? keychainManager.getToken() {
-            authToken = token
-
-            // Load user and repositories in background
-            Task {
-                await loadInitialData()
+        // Load token from Keychain (with biometric if enabled)
+        Task {
+            do {
+                let requireBiometric = keychainManager.isBiometricEnabled() && keychainManager.canUseBiometricAuthentication()
+                let token = try await keychainManager.getToken(requireBiometric: requireBiometric)
+                
+                if let token = token {
+                    await MainActor.run {
+                        self.authToken = token
+                    }
+                    // Load user and repositories
+                    await loadInitialData()
+                }
+            } catch {
+                print("Failed to load token: \(error)")
+                await MainActor.run {
+                    self.errorMessage = "Authentication required"
+                }
             }
         }
 
         // Load settings
         let settings = AppSettings.load()
         selectedRepositoryIDs = settings.selectedRepositoryIDs
+    }
+    
+    func authenticateWithBiometric() async -> Bool {
+        guard keychainManager.isBiometricEnabled() else { return true }
+        guard keychainManager.canUseBiometricAuthentication() else { return true }
+        
+        do {
+            let token = try await keychainManager.getToken(
+                requireBiometric: true,
+                reason: "Authenticate to access GitHub Actions"
+            )
+            if let token = token {
+                await MainActor.run {
+                    self.authToken = token
+                }
+                return true
+            }
+            return false
+        } catch {
+            await MainActor.run {
+                self.errorMessage = "Biometric authentication failed"
+            }
+            return false
+        }
     }
 
     func loadInitialData() async {
