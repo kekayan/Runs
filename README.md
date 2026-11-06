@@ -23,8 +23,8 @@ A native macOS menu bar app that shows the latest GitHub Actions workflow runs f
 
 ### Download (recommended)
 
-1. Download the latest `Runs-<version>.zip` from the [latest release](https://github.com/kekayan/Runs/releases/latest)
-2. Unzip it and move `Runs.app` to `/Applications`
+1. Download `Runs-<version>.dmg` from the [latest release](https://github.com/kekayan/Runs/releases/latest)
+2. Open it and drag Runs into Applications (a zip is also available)
 3. Open it - the app is signed with Developer ID and notarized by Apple
 
 ### Requirements
@@ -78,7 +78,7 @@ Or build and install an unsigned copy to `/Applications`:
 
 ### Releasing
 
-`release.sh` archives the app, signs it with Developer ID, notarizes and staples it, and writes `build/release/Runs-<version>.zip`.
+`release.sh` archives the app, signs it with Developer ID, notarizes and staples it, and writes `build/release/Runs-<version>.zip` and a notarized `Runs-<version>.dmg` (via `make_dmg.sh`).
 
 One-time setup:
 
@@ -92,7 +92,7 @@ Then for each release, bump the version in Xcode (target → General → Version
 
 ```bash
 ./release.sh
-gh release create v<version> build/release/Runs-<version>.zip
+gh release create v<version> build/release/Runs-<version>.dmg build/release/Runs-<version>.zip
 ```
 
 ### Project structure

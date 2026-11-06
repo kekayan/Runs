@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds a Developer ID–signed, notarized Runs.app and zips it for distribution.
+# Builds a Developer ID–signed, notarized Runs.app, then packages it as a zip and a DMG.
 #
 # One-time setup:
 #   1. Xcode → Settings → Accounts → Manage Certificates → + → "Developer ID Application"
@@ -58,3 +58,5 @@ fi
 
 ditto -c -k --keepParent "$APP" "$ZIP"
 echo "==> Done: $ZIP"
+
+"$PROJECT_DIR/make_dmg.sh" "$APP" "$BUILD_DIR/Runs-$VERSION.dmg"
