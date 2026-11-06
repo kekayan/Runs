@@ -1,48 +1,32 @@
+import os
 import Foundation
-import Combine
 
+/// Runs a refresh closure on a fixed interval until stopped.
+@MainActor
 class RefreshService {
-    private var timer: Timer?
+    private var loop: Task<Void, Never>?
     private let interval: TimeInterval
-    private var refreshTask: (() async -> Void)?
 
-    init(interval: TimeInterval = GitHubConstants.refreshInterval) {
+    init(interval: TimeInterval = 300) {
         self.interval = interval
     }
 
-    // Start auto-refresh timer
-    func start(refreshTask: @escaping () async -> Void) {
-        self.refreshTask = refreshTask
-        stop() // Stop any existing timer
+    var isRunning: Bool { loop != nil }
 
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            Task {
-                await self.refreshTask?()
+    func start(_ refresh: @escaping @MainActor () async -> Void) {
+        stop()
+        loop = Task { [interval] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(interval))
+                guard !Task.isCancelled else { break }
+                await refresh()
             }
         }
-
-        // Ensure timer runs even when menu is open
-        if let timer = timer {
-            RunLoop.main.add(timer, forMode: .common)
-        }
-
-        print("Auto-refresh started with interval: \(interval) seconds")
+        Log.app.debug("Auto-refresh started (\(self.interval)s)")
     }
 
-    // Stop auto-refresh timer
     func stop() {
-        timer?.invalidate()
-        timer = nil
-        print("Auto-refresh stopped")
-    }
-
-    // Check if timer is running
-    var isRunning: Bool {
-        timer != nil
-    }
-
-    deinit {
-        stop()
+        loop?.cancel()
+        loop = nil
     }
 }

@@ -2,18 +2,18 @@ import Foundation
 
 struct GitHubConstants {
     // MARK: - OAuth Configuration
-    // These are app identifiers that identify your OAuth app to GitHub.
-    // The Client Secret should be treated as sensitive.
-    // You can override these via environment variables if needed.
-    
+    // Uses the OAuth Device Flow, so no client secret ships with the app.
+    // "Enable Device Flow" must be turned on in the OAuth app's settings on GitHub.
+    // Override the client ID with the GITHUB_CLIENT_ID environment variable.
     static let clientID = ProcessInfo.processInfo.environment["GITHUB_CLIENT_ID"] ?? "Ov23liiRWGLaXVGnEIN0"
-    static let clientSecret = ProcessInfo.processInfo.environment["GITHUB_CLIENT_SECRET"] ?? "94d4e79d6867dcaf19e9593e65279617af5552d3"
-    static let redirectURI = ProcessInfo.processInfo.environment["GITHUB_REDIRECT_URI"] ?? "dev.kekayan.runs://oauth-callback"
+
+    // OAuth apps have no Actions-only scope; `repo` is the narrowest scope that
+    // can read workflow runs of private repositories.
     static let scopes = "repo"
 
     // MARK: - API URLs
     static let apiBaseURL = "https://api.github.com"
-    static let oauthAuthorizeURL = "https://github.com/login/oauth/authorize"
+    static let deviceCodeURL = "https://github.com/login/device/code"
     static let oauthAccessTokenURL = "https://github.com/login/oauth/access_token"
 
     // MARK: - API Endpoints

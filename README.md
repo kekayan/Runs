@@ -52,33 +52,11 @@ Then launch: `open -a Runs` or use Spotlight (Cmd+Space → "Runs")
 
 ## Configuration
 
-The app works out of the box with pre-configured OAuth credentials. To use your own GitHub OAuth app:
+Sign-in uses GitHub's OAuth Device Flow, so no client secret is shipped. The app comes with a client ID. To use your own OAuth app:
 
-### Option 1: Environment Variables
-
-In Xcode: Product → Scheme → Edit Scheme → Run → Arguments
-
-Add:
-- `GITHUB_CLIENT_ID` = your_client_id
-- `GITHUB_CLIENT_SECRET` = your_client_secret
-
-### Option 2: .env File
-
-```bash
-cp .env.example .env
-# Edit .env with your credentials
-```
-
-### Creating Your Own OAuth App
-
-1. Go to https://github.com/settings/developers
-2. Click "New OAuth App"
-3. Fill in:
-   - **Application name:** Runs - GitHub Actions Menu Bar
-   - **Homepage URL:** https://github.com/yourusername/runs
-   - **Authorization callback URL:** `dev.kekayan.runs://oauth-callback`
-4. Copy Client ID and Client Secret
-5. Configure via Option 1 or 2 above
+1. Go to https://github.com/settings/developers and click "New OAuth App" (the callback URL isn't used)
+2. Tick **Enable Device Flow**
+3. In Xcode: Product → Scheme → Edit Scheme → Run → Arguments, add `GITHUB_CLIENT_ID` = your_client_id
 
 ## Architecture
 
@@ -162,4 +140,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Note:** The app identifiers (Client ID, bundle identifier, URL scheme) are public identifiers that identify the OAuth app to GitHub. The Client Secret should be kept private. Contributors can use their own OAuth credentials via environment variables.
+**Note:** The Client ID is a public identifier. No client secret is used; contributors can point the app at their own OAuth app with `GITHUB_CLIENT_ID`.

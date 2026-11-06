@@ -1,218 +1,239 @@
+import os
 import Foundation
 import Observation
+import AppKit
 
+@MainActor
 @Observable
 class AppState {
-    // MARK: - State Properties
-    var authToken: String?
-    var currentUser: GitHubUser?
-    var repositories: [Repository] = []
-    var selectedRepositoryIDs: Set<Int> = []
-    var workflowRuns: [WorkflowRun] = []
-    var isLoading: Bool = false
+    // MARK: - State
+    private(set) var authToken: String?
+    private(set) var currentUser: GitHubUser?
+    private(set) var repositories: [Repository] = []
+    private(set) var selectedRepositoryIDs: Set<Int> = []
+    private(set) var workflowRuns: [WorkflowRun] = []
+    private(set) var isLoading = false
     var errorMessage: String?
-    var lastRefreshDate: Date?
+    private(set) var lastRefreshDate: Date?
+
+    /// Shown while the user approves the sign-in on github.com.
+    private(set) var pendingDeviceCode: AuthService.DeviceCode?
+    private(set) var isSigningIn = false
+    private(set) var useBiometricAuthentication = false
 
     // MARK: - Services
     private let authService = AuthService.shared
     private let githubService = GitHubService.shared
     private let keychainManager = KeychainManager.shared
+    private let apiClient = GitHubAPIClient.shared
+    private let refreshService = RefreshService()
+    private var signInTask: Task<Void, Never>?
+    private var refreshTask: Task<Void, Never>?
 
-    // MARK: - Biometric Settings
-    var useBiometricAuthentication: Bool {
-        get { KeychainManager.shared.isBiometricEnabled() }
-        set { 
-            // Save preference will be handled when saving token
+    private static let staleAfter: TimeInterval = 60
+
+    init() {
+        selectedRepositoryIDs = AppSettings.load().selectedRepositoryIDs
+        useBiometricAuthentication = keychainManager.isBiometricEnabled()
+        Task { await loadSavedToken() }
+    }
+
+    var isAuthenticated: Bool { authToken != nil && currentUser != nil }
+
+    var selectedRepositories: [Repository] {
+        repositories.filter { selectedRepositoryIDs.contains($0.id) }
+    }
+
+    // MARK: - Sign in (Device Flow)
+
+    func login() {
+        signInTask?.cancel()
+        errorMessage = nil
+        isSigningIn = true
+        signInTask = Task {
+            defer {
+                isSigningIn = false
+                pendingDeviceCode = nil
+            }
+            do {
+                let code = try await authService.requestDeviceCode()
+                pendingDeviceCode = code
+                copyUserCode()
+                NSWorkspace.shared.open(code.verificationURL)
+
+                let token = try await authService.pollForToken(code)
+                try keychainManager.saveToken(token, useBiometric: false)
+                useBiometricAuthentication = false
+                authToken = token
+                await loadInitialData()
+            } catch is CancellationError {
+                // User cancelled
+            } catch {
+                Log.auth.error("Sign-in failed: \(error.localizedDescription, privacy: .public)")
+                errorMessage = "Login failed: \(error.localizedDescription)"
+            }
         }
     }
 
-    // MARK: - Initialization
-    init() {
-        loadSavedState()
+    func cancelLogin() {
+        signInTask?.cancel()
+        signInTask = nil
     }
 
-    // MARK: - Authentication Methods
-
-    func login() {
-        authService.startOAuthFlow()
+    func copyUserCode() {
+        guard let code = pendingDeviceCode?.userCode else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
     }
 
     func logout() {
-        // Clear token from Keychain
         try? keychainManager.deleteToken()
+        clearSession()
+        useBiometricAuthentication = false
+        errorMessage = nil
+    }
 
-        // Clear state
+    /// Drops in-memory credentials and data. Repository selection is kept so
+    /// signing back in restores it.
+    private func clearSession() {
+        refreshService.stop()
+        refreshTask?.cancel()
+        apiClient.clearCache()
         authToken = nil
         currentUser = nil
         repositories = []
         workflowRuns = []
-        selectedRepositoryIDs = []
-        errorMessage = nil
         lastRefreshDate = nil
-
-        // Clear saved settings
-        AppSettings.clear()
     }
 
-    func handleOAuthCallback(_ url: URL) async {
+    // MARK: - Biometrics
+
+    func setBiometricProtection(_ enabled: Bool) {
+        guard let token = authToken else { return }
         do {
-            isLoading = true
-            errorMessage = nil
-
-            // Exchange code for token
-            let token = try await authService.handleCallback(url: url)
-
-            // Save token to Keychain (with biometric if enabled)
-            try keychainManager.saveToken(token, useBiometric: useBiometricAuthentication)
-            await MainActor.run {
-                self.authToken = token
-            }
-
-            // Fetch user info
-            currentUser = try await githubService.fetchUser(token: token)
-
-            // Load repositories
-            await loadRepositories()
-
-            isLoading = false
+            try keychainManager.saveToken(token, useBiometric: enabled)
+            useBiometricAuthentication = enabled
         } catch {
-            isLoading = false
-            errorMessage = "Login failed: \(error.localizedDescription)"
-            print("OAuth callback error: \(error)")
+            errorMessage = "Couldn't update biometric protection: \(error.localizedDescription)"
+            // Make sure the token is still stored somewhere usable.
+            try? keychainManager.saveToken(token, useBiometric: useBiometricAuthentication)
         }
     }
 
-    // MARK: - Data Loading Methods
+    // MARK: - Loading
 
-    func loadSavedState() {
-        // Load token from Keychain (with biometric if enabled)
-        Task {
-            do {
-                let requireBiometric = keychainManager.isBiometricEnabled() && keychainManager.canUseBiometricAuthentication()
-                let token = try await keychainManager.getToken(requireBiometric: requireBiometric)
-                
-                if let token = token {
-                    await MainActor.run {
-                        self.authToken = token
-                    }
-                    // Load user and repositories
-                    await loadInitialData()
-                }
-            } catch {
-                print("Failed to load token: \(error)")
-                await MainActor.run {
-                    self.errorMessage = "Authentication required"
-                }
-            }
-        }
-
-        // Load settings
-        let settings = AppSettings.load()
-        selectedRepositoryIDs = settings.selectedRepositoryIDs
-    }
-    
-    func authenticateWithBiometric() async -> Bool {
-        guard keychainManager.isBiometricEnabled() else { return true }
-        guard keychainManager.canUseBiometricAuthentication() else { return true }
-        
+    private func loadSavedToken() async {
         do {
-            let token = try await keychainManager.getToken(
-                requireBiometric: true,
-                reason: "Authenticate to access GitHub Actions"
-            )
-            if let token = token {
-                await MainActor.run {
-                    self.authToken = token
-                }
-                return true
-            }
-            return false
+            guard let token = try await keychainManager.getToken(reason: "unlock your GitHub token") else { return }
+            authToken = token
+            await loadInitialData()
         } catch {
-            await MainActor.run {
-                self.errorMessage = "Biometric authentication failed"
-            }
-            return false
+            Log.keychain.error("Couldn't load token: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Couldn't unlock your GitHub token. Open the menu to try again."
         }
+    }
+
+    /// Retry unlocking (e.g. after a cancelled Touch ID prompt).
+    func unlockIfNeeded() {
+        guard authToken == nil, !isSigningIn else { return }
+        Task { await loadSavedToken() }
     }
 
     func loadInitialData() async {
         guard let token = authToken else { return }
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
 
         do {
-            isLoading = true
-            errorMessage = nil
-
-            // Load user info
             currentUser = try await githubService.fetchUser(token: token)
-
-            // Load repositories
             await loadRepositories()
-
-            // Load workflow runs if repositories are selected
-            if !selectedRepositoryIDs.isEmpty {
-                await refreshRuns()
-            }
-
-            isLoading = false
+            await performRefresh()
+            refreshService.start { [weak self] in await self?.refreshRuns() }
         } catch {
-            isLoading = false
-            errorMessage = "Failed to load data: \(error.localizedDescription)"
-
-            // If unauthorized, clear token
-            if case APIError.unauthorized = error {
-                logout()
-            }
+            await handle(error, context: "Failed to load data")
         }
     }
 
     func loadRepositories() async {
         guard let token = authToken else { return }
-
         do {
             repositories = try await githubService.fetchRepositories(token: token)
         } catch {
-            errorMessage = "Failed to load repositories: \(error.localizedDescription)"
-            print("Error loading repositories: \(error)")
+            await handle(error, context: "Failed to load repositories")
         }
     }
 
+    /// Refreshes runs, coalescing with any refresh already in flight.
     func refreshRuns() async {
+        if let refreshTask {
+            await refreshTask.value
+            return
+        }
+        let task = Task { await performRefresh() }
+        refreshTask = task
+        await task.value
+        refreshTask = nil
+    }
+
+    /// Called when the popover opens: refresh if the data is stale.
+    func refreshIfStale() {
+        guard isAuthenticated else {
+            unlockIfNeeded()
+            return
+        }
+        if let last = lastRefreshDate, Date().timeIntervalSince(last) < Self.staleAfter { return }
+        Task { await refreshRuns() }
+    }
+
+    private func performRefresh() async {
         guard let token = authToken else { return }
-        guard !selectedRepositoryIDs.isEmpty else {
+        guard !selectedRepositories.isEmpty else {
             workflowRuns = []
             return
         }
 
+        isLoading = true
+        defer { isLoading = false }
+
         do {
-            isLoading = true
-            errorMessage = nil
-
-            workflowRuns = try await githubService.fetchLatestRunsForSelectedRepos(
-                selectedIDs: selectedRepositoryIDs,
-                allRepos: repositories,
-                token: token
-            )
-
-            // Limit to max runs to display
-            if workflowRuns.count > GitHubConstants.maxRunsToDisplay {
-                workflowRuns = Array(workflowRuns.prefix(GitHubConstants.maxRunsToDisplay))
-            }
-
+            let result = try await githubService.fetchLatestRuns(for: selectedRepositories, token: token)
+            workflowRuns = Array(result.runs.prefix(GitHubConstants.maxRunsToDisplay))
             lastRefreshDate = Date()
-            isLoading = false
-        } catch {
-            isLoading = false
-            errorMessage = "Failed to refresh runs: \(error.localizedDescription)"
-            print("Error refreshing runs: \(error)")
 
-            // If unauthorized, clear token
-            if case APIError.unauthorized = error {
-                logout()
+            if result.failures.isEmpty {
+                errorMessage = nil
+            } else {
+                let names = result.failures.map(\.repository.name).joined(separator: ", ")
+                errorMessage = "Couldn't load runs for \(names)"
             }
+        } catch is CancellationError {
+        } catch {
+            await handle(error, context: "Failed to refresh runs")
         }
     }
 
-    // MARK: - Repository Selection Methods
+    /// A 401 can be transient; confirm the token is really rejected before signing out.
+    private func handle(_ error: Error, context: String) async {
+        if case APIError.unauthorized = error, let token = authToken {
+            do {
+                _ = try await githubService.fetchUser(token: token)
+                errorMessage = "\(context): \(error.localizedDescription)"
+            } catch APIError.unauthorized {
+                Log.auth.notice("Token rejected by GitHub; signing out")
+                try? keychainManager.deleteToken()
+                clearSession()
+                errorMessage = APIError.unauthorized.localizedDescription
+            } catch {
+                errorMessage = "\(context): \(error.localizedDescription)"
+            }
+            return
+        }
+        Log.app.error("\(context, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        errorMessage = "\(context): \(error.localizedDescription)"
+    }
+
+    // MARK: - Repository selection
 
     func toggleRepositorySelection(_ id: Int) {
         if selectedRepositoryIDs.contains(id) {
@@ -220,32 +241,11 @@ class AppState {
         } else {
             selectedRepositoryIDs.insert(id)
         }
-        saveSettings()
-
-        // Refresh runs when selection changes
-        Task {
-            await refreshRuns()
-        }
+        AppSettings(selectedRepositoryIDs: selectedRepositoryIDs).save()
+        Task { await refreshRuns() }
     }
 
     func isRepositorySelected(_ id: Int) -> Bool {
         selectedRepositoryIDs.contains(id)
-    }
-
-    // MARK: - Settings Persistence
-
-    private func saveSettings() {
-        let settings = AppSettings(selectedRepositoryIDs: selectedRepositoryIDs)
-        settings.save()
-    }
-
-    // MARK: - Computed Properties
-
-    var isAuthenticated: Bool {
-        authToken != nil && currentUser != nil
-    }
-
-    var selectedRepositories: [Repository] {
-        repositories.filter { selectedRepositoryIDs.contains($0.id) }
     }
 }

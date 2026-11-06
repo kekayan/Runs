@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct AuthenticationSection: View {
     @State private var appState: AppState
@@ -57,24 +58,49 @@ struct AuthenticationSection: View {
         }
     }
 
+    @ViewBuilder
     private var unauthenticatedView: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
                 .fill(.blue.opacity(0.15))
 
             VStack(alignment: .leading, spacing: 12) {
-                Text("Connect your GitHub account to monitor workflow runs")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                if let code = appState.pendingDeviceCode {
+                    Text("Enter this code on GitHub (it's been copied to your clipboard):")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
-                Button(action: { appState.login() }) {
-                    HStack {
-                        Image(systemName: "person.badge.key")
-                        Text("Login with GitHub")
+                    HStack(spacing: 12) {
+                        Text(code.userCode)
+                            .font(.system(.title2, design: .monospaced, weight: .bold))
+                            .textSelection(.enabled)
+
+                        Button("Copy") { appState.copyUserCode() }
+                            .controlSize(.small)
                     }
+
+                    HStack {
+                        Button("Open GitHub") { NSWorkspace.shared.open(code.verificationURL) }
+                            .buttonStyle(.glassProminent)
+                        Button("Cancel") { appState.cancelLogin() }
+                            .buttonStyle(.glass)
+                        ProgressView().controlSize(.small)
+                    }
+                } else {
+                    Text("Connect your GitHub account to monitor workflow runs")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Button(action: { appState.login() }) {
+                        HStack {
+                            Image(systemName: "person.badge.key")
+                            Text("Login with GitHub")
+                        }
+                    }
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.large)
+                    .disabled(appState.isSigningIn)
                 }
-                .buttonStyle(.glassProminent)
-                .controlSize(.large)
             }
             .padding()
         }

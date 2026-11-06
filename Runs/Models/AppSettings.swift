@@ -1,3 +1,4 @@
+import os
 import Foundation
 
 struct AppSettings: Codable {
@@ -22,7 +23,7 @@ struct AppSettings: Codable {
     // Save settings to UserDefaults
     func save() {
         guard let data = try? JSONEncoder().encode(self) else {
-            print("Failed to encode settings")
+            Log.app.error("Failed to encode settings")
             return
         }
         UserDefaults.standard.set(data, forKey: Self.userDefaultsKey)

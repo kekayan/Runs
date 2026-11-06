@@ -1,3 +1,4 @@
+import os
 import Cocoa
 import SwiftUI
 
@@ -5,12 +6,10 @@ class StatusBarController: NSObject, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var appState: AppState
-    private var refreshService: RefreshService
     private var eventMonitor: EventMonitor?
-    
-    init(appState: AppState, refreshService: RefreshService) {
+
+    init(appState: AppState) {
         self.appState = appState
-        self.refreshService = refreshService
         super.init()
         setupStatusBar()
     }
@@ -20,7 +19,7 @@ class StatusBarController: NSObject, NSPopoverDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
         guard let button = statusItem?.button else {
-            print("ERROR: Failed to create status bar button")
+            Log.app.error("Failed to create status bar button")
             return
         }
         
@@ -34,8 +33,6 @@ class StatusBarController: NSObject, NSPopoverDelegate {
         button.action = #selector(togglePopover)
         button.target = self
         button.toolTip = "Runs"
-        
-        print("Status bar item created successfully")
         
         // Create popover with default appearance for vibrant colors
         popover = NSPopover()
@@ -68,27 +65,8 @@ class StatusBarController: NSObject, NSPopoverDelegate {
     private func showPopover() {
         guard let button = statusItem?.button else { return }
         
-        // Setup OAuth callback
-        AppDelegate.shared?.setURLCallback { [weak self] url in
-            Task {
-                await self?.appState.handleOAuthCallback(url)
-                
-                // Start auto-refresh after successful login
-                if self?.appState.isAuthenticated == true {
-                    self?.refreshService.start {
-                        await self?.appState.refreshRuns()
-                    }
-                }
-            }
-        }
-        
-        // Start auto-refresh if already authenticated
-        if appState.isAuthenticated {
-            refreshService.start {
-                await self.appState.refreshRuns()
-            }
-        }
-        
+        appState.refreshIfStale()
+
         popover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         eventMonitor?.start()
     }

@@ -41,32 +41,15 @@ open Runs.xcodeproj
 
 ### Step 2: Configure (Optional)
 
-The app comes pre-configured with OAuth credentials and works out of the box. However, if you want to use your own GitHub OAuth app:
+Sign-in uses GitHub's **OAuth Device Flow**: the app shows a short code, opens github.com, and you approve there. No client secret is used or shipped.
 
-**Option A: Environment Variables (Recommended for Development)**
+The app comes with a client ID. To use your own GitHub OAuth app instead:
 
-1. In Xcode: Product → Scheme → Edit Scheme → Run → Arguments
-2. Add Environment Variables:
-   - `GITHUB_CLIENT_ID` = your_client_id
-   - `GITHUB_CLIENT_SECRET` = your_client_secret
-
-**Option B: .env File**
-
-```bash
-cp .env.example .env
-# Edit .env with your credentials
-```
-
-**Option C: Create Your Own OAuth App**
-
-1. Go to https://github.com/settings/developers
-2. Click "New OAuth App"
-3. Fill in:
-   - Application name: `Runs - GitHub Actions Menu Bar`
-   - Homepage URL: `https://github.com/yourusername/runs`
-   - Authorization callback URL: `dev.kekayan.runs://oauth-callback`
-4. Copy Client ID and Client Secret
-5. Configure via Option A or B above
+1. Go to https://github.com/settings/developers and click "New OAuth App"
+2. Fill in any homepage and callback URL (the callback isn't used)
+3. Tick **Enable Device Flow** and save
+4. Copy the Client ID (you don't need a client secret)
+5. In Xcode: Product → Scheme → Edit Scheme → Run → Arguments, add `GITHUB_CLIENT_ID` = your_client_id
 
 ### Step 3: Build
 
@@ -138,10 +121,8 @@ sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 - Try: `killall Runs` then relaunch
 - Verify app is running: `ps aux | grep Runs`
 
-**"OAuth redirect doesn't work"**
-- Verify callback URL in GitHub OAuth app: `dev.kekayan.runs://oauth-callback`
-- Test with: `open "dev.kekayan.runs://test"`
-- Check URL scheme in Info.plist
+**"Device Flow is not enabled for this OAuth app"**
+- Open the OAuth app at https://github.com/settings/developers and tick **Enable Device Flow**
 
 **"App crashes on launch"**
 1. Open Console.app

@@ -42,19 +42,11 @@ struct SettingsView: View {
                             if KeychainManager.shared.canUseBiometricAuthentication() {
                                 Toggle("Use \(KeychainManager.shared.getBiometricType())", isOn: Binding(
                                     get: { appState.useBiometricAuthentication },
-                                    set: { newValue in
-                                        appState.useBiometricAuthentication = newValue
-                                        // Re-save token with new setting
-                                        if let token = appState.authToken {
-                                            Task {
-                                                try? KeychainManager.shared.saveToken(token, useBiometric: newValue)
-                                            }
-                                        }
-                                    }
+                                    set: { appState.setBiometricProtection($0) }
                                 ))
                                 .toggleStyle(.switch)
                                 
-                                Text("Require biometric authentication to access your GitHub token")
+                                Text("The Keychain will only release your GitHub token after biometric authentication")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             } else {
