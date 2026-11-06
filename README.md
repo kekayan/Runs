@@ -1,143 +1,119 @@
+<p align="center"><img src="design/icon-256.png" width="128" alt="Runs icon"></p>
+
 # Runs - GitHub Actions Menu Bar App
 
-A native macOS menu bar application that monitors GitHub Actions workflow runs in real-time.
+A native macOS menu bar app that shows the latest GitHub Actions workflow runs for the repositories you pick.
 
+![Release](https://img.shields.io/github/v/release/kekayan/Runs)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Platform](https://img.shields.io/badge/platform-macOS%2015.0+-lightgrey.svg)
-![Swift](https://img.shields.io/badge/swift-6.0-orange.svg)
+![Platform](https://img.shields.io/badge/platform-macOS%2026.2+-lightgrey.svg)
 
 ## Features
 
-- **Menu Bar Integration** - Lives in your macOS menu bar for quick access
-- **GitHub OAuth** - Secure authentication with your GitHub account
-- **Biometric Protection** - Optional Touch ID / Face ID for token access
-- **Repository Selection** - Choose which repositories to monitor
-- **Real-time Updates** - Auto-refresh every 5 minutes + manual refresh
-- **Workflow Status** - See latest runs with status (success/failure/in-progress)
-- **Quick Actions** - Click any run to copy its GitHub URL
-- **Native UI** - Built with SwiftUI and NSStatusBar
+- **Menu Bar Integration** - Lives in your menu bar, out of the Dock
+- **GitHub Sign-in** - Uses GitHub's Device Flow; no client secret ships in the app
+- **Touch ID Protection** - Optional; the Keychain itself won't release your token without it
+- **Repository Selection** - Choose which repositories to monitor, from all repos you can access
+- **Auto Refresh** - Every 5 minutes, and whenever you open the menu with stale data
+- **Workflow Status** - Latest run per repo with success / failure / in-progress status
+- **Quick Copy** - Click a run to copy its URL (or the commit hash for successful runs)
+- **Resilient** - Handles GitHub rate limits, and one failing repo doesn't hide the others
 
 ## Installation
 
-### Quick Start
+### Download (recommended)
 
-```bash
-git clone https://github.com/yourusername/runs.git
-cd runs
-chmod +x build_and_install.sh
-./build_and_install.sh
-```
-
-Then launch: `open -a Runs` or use Spotlight (Cmd+Space → "Runs")
+1. Download the latest `Runs-<version>.zip` from the [latest release](https://github.com/kekayan/Runs/releases/latest)
+2. Unzip it and move `Runs.app` to `/Applications`
+3. Open it - the app is signed with Developer ID and notarized by Apple
 
 ### Requirements
 
-- macOS 15.0+
-- Xcode 16.0+ (for building from source)
-- GitHub account
+- macOS 26.2 or later
+- A GitHub account
+- Xcode 26 or later, only if building from source
 
 ## Usage
 
-1. Launch the app from `/Applications`
-2. Click the menu bar icon (⚡)
-3. Click "Login with GitHub"
-4. Authorize the app in your browser
-5. Select repositories to monitor
-6. View workflow runs in the menu bar popup
+1. Click the menu bar icon, then the gear icon to open Settings
+2. Click **Login with GitHub**
+3. GitHub opens in your browser and the sign-in code is copied to your clipboard - paste it and approve
+4. Back in Settings, select the repositories to monitor
+5. Click the menu bar icon to see their latest runs
 
 **Tips:**
-- Click the refresh icon to manually update
-- Click any workflow run to copy its URL
-- The app auto-refreshes every 5 minutes
-
-## Configuration
-
-Sign-in uses GitHub's OAuth Device Flow, so no client secret is shipped. The app comes with a client ID. To use your own OAuth app:
-
-1. Go to https://github.com/settings/developers and click "New OAuth App" (the callback URL isn't used)
-2. Tick **Enable Device Flow**
-3. In Xcode: Product → Scheme → Edit Scheme → Run → Arguments, add `GITHUB_CLIENT_ID` = your_client_id
-
-## Architecture
-
-### Tech Stack
-- **SwiftUI** - Modern declarative UI
-- **NSStatusBar** - Native menu bar integration
-- **GitHub REST API** - Workflow data
-- **Keychain** - Secure token storage
-
-### Project Structure
-```
-Runs/
-├── Models/              # Data models
-├── Services/            # Business logic
-├── Views/               # UI components
-├── Utilities/           # Helpers
-├── AppDelegate.swift    # App lifecycle
-├── RunsApp.swift        # Main entry
-└── Info.plist          # App configuration
-```
+- Click the refresh icon to update right away
+- Turn on Touch ID in Settings to require it before the token is unlocked
 
 ## Security
 
-### Biometric Authentication
+- **No client secret.** Sign-in uses the [OAuth Device Flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow), so there's no secret to extract and no redirect URL another app could forge.
+- **Token storage.** Your token is stored in the macOS Keychain, readable only while your Mac is unlocked and never synced to other devices.
+- **Touch ID.** When enabled, the token is stored with a biometric access control, so the Keychain refuses to release it without Touch ID. Adding or removing fingerprints invalidates it, and you'll need to sign in again.
+- **Scope.** The app requests the `repo` scope. GitHub OAuth apps have no narrower scope that can read Actions runs in private repositories.
 
-The app supports optional biometric authentication (Touch ID / Face ID) to protect your GitHub token:
+## Configuration
 
-1. Open Settings (gear icon)
-2. Toggle "Use Touch ID" (or Face ID)
-3. Your token will be protected by biometric authentication
+The app comes with a client ID. To use your own OAuth app:
 
-When enabled:
-- Token is stored with biometric access control in Keychain
-- You'll be prompted for biometric auth when accessing the token
-- Background auto-refresh continues to work after initial authentication
-
-### Token Storage
-
-- OAuth tokens are stored in macOS Keychain
-- Encrypted and only accessible when device is unlocked
-- Optional biometric protection layer
-- Tokens persist across app updates
+1. Go to https://github.com/settings/developers and click **New OAuth App** (the callback URL isn't used)
+2. Tick **Enable Device Flow**
+3. In Xcode: Product → Scheme → Edit Scheme → Run → Arguments, add `GITHUB_CLIENT_ID` = your client ID
 
 ## Development
 
-### Building from Source
+### Building from source
 
 ```bash
-# Build debug version
-xcodebuild -project Runs.xcodeproj -scheme Runs -configuration Debug build
-
-# Or open in Xcode
+git clone https://github.com/kekayan/Runs.git
+cd Runs
 open Runs.xcodeproj
 ```
 
-### Project Setup
+Or build and install an unsigned copy to `/Applications`:
 
-1. Fork the repository
-2. Build and run (pre-configured credentials included)
-3. Or configure your own OAuth app (see Configuration)
+```bash
+./build_and_install.sh
+```
+
+### Releasing
+
+`release.sh` archives the app, signs it with Developer ID, notarizes and staples it, and writes `build/release/Runs-<version>.zip`.
+
+One-time setup:
+
+1. Xcode → Settings → Accounts → Manage Certificates → **+** → Developer ID Application (Xcode can also create it automatically on first export)
+2. Store notary credentials using an [app-specific password](https://account.apple.com):
+   ```bash
+   xcrun notarytool store-credentials runs-notary --apple-id <your-apple-id> --team-id <your-team-id>
+   ```
+
+Then for each release, bump the version in Xcode (target → General → Version) and run:
+
+```bash
+./release.sh
+gh release create v<version> build/release/Runs-<version>.zip
+```
+
+### Project structure
+
+```
+Runs/
+├── Models/              # GitHub API models and saved settings
+├── Services/            # App state, auth, API client, Keychain, refresh loop
+├── Views/               # SwiftUI views for the popover and Settings
+├── Utilities/           # Constants, logging, date formatting
+├── AppDelegate.swift    # App lifecycle
+├── StatusBarController.swift  # Menu bar item and popover
+└── RunsApp.swift        # Entry point
+```
+
+Logs go to the unified log under the `dev.kekayan.runs` subsystem; view them in Console.app.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+Contributions are welcome. Fork the repo, make your change on a branch, and open a pull request.
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built with SwiftUI and AppKit
-- Uses GitHub's REST API
-- Inspired by native macOS menu bar apps
-
----
-
-**Note:** The Client ID is a public identifier. No client secret is used; contributors can point the app at their own OAuth app with `GITHUB_CLIENT_ID`.
